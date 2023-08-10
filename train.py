@@ -14,13 +14,20 @@ from utils.saver import Saver
 from utils.summaries import TensorboardSummary
 from utils.metrics import Evaluator
 
+from torchsummary import summary as model_summary # walter - for summary
+import matplotlib.pyplot as plt # ellen - for plot 
+import pdb  # pdb.set_trace()
+import tarfile  # for test
+
 class Trainer(object):
     def __init__(self, args):
         self.args = args
 
         # Define Saver
         self.saver = Saver(args)
-        self.saver.save_experiment_config()
+        if not args.test: # ellen test
+            self.saver.save_experiment_config()
+    
         # Define Tensorboard Summary
         self.summary = TensorboardSummary(self.saver.experiment_dir)
         self.writer = self.summary.create_summary()
@@ -36,7 +43,7 @@ class Trainer(object):
                         sync_bn=args.sync_bn,
                         freeze_bn=args.freeze_bn)
 
-        train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr},
+        train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr },
                         {'params': model.get_10x_lr_params(), 'lr': args.lr * 10}]
 
         # Define Optimizer
@@ -99,6 +106,7 @@ class Trainer(object):
             image, target = sample['image'], sample['label']
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
+
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
             output = self.model(image)
@@ -175,6 +183,67 @@ class Trainer(object):
                 'best_pred': self.best_pred,
             }, is_best)
 
+
+    def test(self): 
+        # ellen
+        # model setting 
+        print("TEST -----------------------")
+        path  = "/root/jieunoh/iccv_seg/run/pascal/"+self.args.checkname
+        print(path)
+
+        # model_tarfile = tarfile.open(path+"/"+"model_best.pth.tar")
+        # model_tarfile.extractall(path=path)
+        # model_tarfile.close()
+        model_best_pth = torch.load(path+"/"+"model_best.pth.tar")
+        # pdb.set_trace()
+        self.model.module.load_state_dict(model_best_pth['state_dict'])
+        # self.model = self.model.load_state_dict("./run/pascal/"+self.args.checkname)
+        self.model.eval()
+        self.evaluator.reset()
+
+        # data setting
+        tbar = tqdm(self.test_loader, desc='\r')
+        test_loss = 0.0
+        for i, sample in enumerate(tbar):
+            image, target = sample['image'], sample['label']
+            if self.args.cuda:
+                image, target = image.cuda(), target.cuda()
+            with torch.no_grad():
+                output = self.model(image)
+            loss = self.criterion(output, target)
+            test_loss += loss.item()
+            tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))
+            pred = output.data.cpu().numpy()
+            target_np = target.cpu().numpy()
+            pred = np.argmax(pred, axis=1)
+            # Add batch sample into evaluator
+            self.evaluator.add_batch(target_np, pred)
+            self.summary.visualize_image_test(self.writer, self.args.dataset, image, target, output, i)
+
+        # Fast test during the training
+        epoch =1
+        Acc = self.evaluator.Pixel_Accuracy()
+        Acc_class = self.evaluator.Pixel_Accuracy_Class()
+        mIoU = self.evaluator.Mean_Intersection_over_Union()
+        FWIoU = self.evaluator.Frequency_Weighted_Intersection_over_Union()
+        self.writer.add_scalar('test/total_loss_epoch', test_loss, epoch)
+        self.writer.add_scalar('test/mIoU', mIoU, epoch)
+        self.writer.add_scalar('test/Acc', Acc, epoch)
+        self.writer.add_scalar('test/Acc_class', Acc_class, epoch)
+        self.writer.add_scalar('test/fwIoU', FWIoU, epoch)
+        print('test:')
+        # print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
+        print("Acc:{}, Acc_class:{}, mIoU:{}, fwIoU: {}".format(Acc, Acc_class, mIoU, FWIoU))
+        print('Loss: %.3f' % test_loss)
+
+        new_pred = mIoU
+        if new_pred > self.best_pred:
+            print("BEST!")
+        print("mIoU: ", mIoU)
+
+
+
+
 def main():
     parser = argparse.ArgumentParser(description="PyTorch DeeplabV3Plus Training")
     parser.add_argument('--backbone', type=str, default='resnet',
@@ -246,9 +315,14 @@ def main():
                         help='evaluuation interval (default: 1)')
     parser.add_argument('--no-val', action='store_true', default=False,
                         help='skip validation during training')
+    
+    # test - ellen
+    parser.add_argument('--test', type=bool, default=False)
+    # parser.add_argument('--saved_model_name', type = str , help = "run/pascal/[-]")
 
     args = parser.parse_args()
     args.cuda = not args.no_cuda and torch.cuda.is_available()
+
     if args.cuda:
         try:
             args.gpu_ids = [int(s) for s in args.gpu_ids.split(',')]
@@ -292,10 +366,16 @@ def main():
     trainer = Trainer(args)
     print('Starting Epoch:', trainer.args.start_epoch)
     print('Total Epoches:', trainer.args.epochs)
-    for epoch in range(trainer.args.start_epoch, trainer.args.epochs):
-        trainer.training(epoch)
-        if not trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1):
-            trainer.validation(epoch)
+    # print(model_summary(trainer.model, (3,513,513), args.batch_size)) # walter - for summary
+
+    if not args.test:
+        for epoch in range(trainer.args.start_epoch, trainer.args.epochs):
+            trainer.training(epoch)
+            if not trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1):
+                trainer.validation(epoch)
+
+    else: # ellen- test
+        trainer.test()
 
     trainer.writer.close()
 

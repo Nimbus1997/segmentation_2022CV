@@ -19,14 +19,14 @@ class DeepLab(nn.Module):
             BatchNorm = nn.BatchNorm2d
 
         self.backbone = build_backbone(backbone, output_stride, BatchNorm)
-        self.aspp = build_aspp(backbone, output_stride, BatchNorm)
+        # self.aspp = build_aspp(backbone, output_stride, BatchNorm) # no aspp
         self.decoder = build_decoder(num_classes, backbone, BatchNorm)
 
         self.freeze_bn = freeze_bn
 
     def forward(self, input):
         x, low_level_feat = self.backbone(input)
-        x = self.aspp(x)
+        # x = self.aspp(x) # no aspp
         x = self.decoder(x, low_level_feat)
         x = F.interpolate(x, size=input.size()[2:], mode='bilinear', align_corners=True)
 
@@ -56,7 +56,9 @@ class DeepLab(nn.Module):
                                 yield p
 
     def get_10x_lr_params(self):
-        modules = [self.aspp, self.decoder]
+        # modules = [self.aspp, self.decoder]  # original
+        modules = [self.decoder]  # no aspp
+
         for i in range(len(modules)):
             for m in modules[i].named_modules():
                 if self.freeze_bn:

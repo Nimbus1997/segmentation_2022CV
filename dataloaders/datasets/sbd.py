@@ -16,7 +16,7 @@ class SBDSegmentation(data.Dataset):
     def __init__(self,
                  args,
                  base_dir=Path.db_root_dir('sbd'),
-                 split='train',
+                 split='trainaug',
                  ):
         """
         :param base_dir: path to VOC dataset directory
@@ -25,9 +25,9 @@ class SBDSegmentation(data.Dataset):
         """
         super().__init__()
         self._base_dir = base_dir
-        self._dataset_dir = os.path.join(self._base_dir, 'dataset')
-        self._image_dir = os.path.join(self._dataset_dir, 'img')
-        self._cat_dir = os.path.join(self._dataset_dir, 'cls')
+        self._dataset_dir = os.path.join(self._base_dir, 'train/ImageSets')
+        self._image_dir = os.path.join(self._base_dir, 'JPEGImages')
+        self._cat_dir = os.path.join(self._base_dir, 'train/SegmentationClassAug')
 
 
         if isinstance(split, str):
@@ -48,9 +48,11 @@ class SBDSegmentation(data.Dataset):
 
             for line in lines:
                 _image = os.path.join(self._image_dir, line + ".jpg")
-                _categ= os.path.join(self._cat_dir, line + ".mat")
-                assert os.path.isfile(_image)
-                assert os.path.isfile(_categ)
+                _categ= os.path.join(self._cat_dir, line + ".png")
+                if os.path.isfile(_image)==False: continue
+                if os.path.isfile(_categ)==False: continue
+                # assert os.path.isfile(_image)
+                # assert os.path.isfile(_categ)
                 self.im_ids.append(line)
                 self.images.append(_image)
                 self.categories.append(_categ)
@@ -72,7 +74,8 @@ class SBDSegmentation(data.Dataset):
 
     def _make_img_gt_point_pair(self, index):
         _img = Image.open(self.images[index]).convert('RGB')
-        _target = Image.fromarray(scipy.io.loadmat(self.categories[index])["GTcls"][0]['Segmentation'][0])
+        _target = Image.open(self.categories[index])
+        # _target = Image.fromarray(scipy.io.loadmat(self.categories[index])["GTcls"][0]['Segmentation'][0])
 
         return _img, _target
 
@@ -102,7 +105,7 @@ if __name__ == '__main__':
     args.base_size = 513
     args.crop_size = 513
 
-    sbd_train = SBDSegmentation(args, split='train')
+    sbd_train = SBDSegmentation(args, split='trainaug')
     dataloader = DataLoader(sbd_train, batch_size=2, shuffle=True, num_workers=2)
 
     for ii, sample in enumerate(dataloader):

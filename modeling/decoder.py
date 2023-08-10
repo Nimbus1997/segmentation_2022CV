@@ -9,12 +9,30 @@ class Decoder(nn.Module):
         super(Decoder, self).__init__()
         if backbone == 'resnet' or backbone == 'drn':
             low_level_inplanes = 256
+            inplanes=2048
+
         elif backbone == 'xception':
             low_level_inplanes = 128
         elif backbone == 'mobilenet':
             low_level_inplanes = 24
         else:
             raise NotImplementedError
+        # #### no aspp ########################################################################
+        self.no_asspp_global_avg_pool = nn.Sequential(nn.AdaptiveAvgPool2d((1, 1)),
+                                             nn.Conv2d(inplanes, 256, 1, stride=1, bias=False),
+                                             BatchNorm(256),
+                                             nn.ReLU())
+
+        self.no_asspp_conv1 = nn.Sequential(nn.Conv2d(inplanes, 256*4, 1, stride=1, bias=False),
+                                             BatchNorm(256*4),
+                                             nn.ReLU())
+        self.no_asspp_conv2 = nn.Sequential(nn.Conv2d(1280, 256, 1, stride=1, bias=False),
+                                             BatchNorm(256),
+                                             nn.ReLU())
+        self.no_asspp_dropout = nn.Dropout(0.5)
+
+        #####################################################################################
+
 
         self.conv1 = nn.Conv2d(low_level_inplanes, 48, 1, bias=False)
         self.bn1 = BatchNorm(48)
@@ -35,6 +53,16 @@ class Decoder(nn.Module):
         low_level_feat = self.conv1(low_level_feat)
         low_level_feat = self.bn1(low_level_feat)
         low_level_feat = self.relu(low_level_feat)
+
+        #### no aspp ######################################################
+        x_conv1 = self.no_asspp_conv1(x)
+        x_avg = self.no_asspp_global_avg_pool(x)
+        x_avg = F.interpolate(x_avg, size = x_conv1.size()[2:], mode='bilinear', align_corners=True)
+        
+        x_1 = torch.cat((x_avg,x_conv1), dim=1)
+        x= self.no_asspp_conv2(x_1)
+        x=self.no_asspp_dropout(x)
+        ###################################################################
 
         x = F.interpolate(x, size=low_level_feat.size()[2:], mode='bilinear', align_corners=True)
         x = torch.cat((x, low_level_feat), dim=1)

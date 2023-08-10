@@ -5,7 +5,10 @@ import numpy as np
 from torch.utils.data import Dataset
 from mypath import Path
 from torchvision import transforms
+import torchvision
 from dataloaders import custom_transforms as tr
+import pdb
+import torchvision.transforms.functional as TF
 
 class VOCSegmentation(Dataset):
     """
@@ -17,16 +20,17 @@ class VOCSegmentation(Dataset):
                  args,
                  base_dir=Path.db_root_dir('pascal'),
                  split='train',
-                 ):
+                 test=False):
         """
         :param base_dir: path to VOC dataset directory
         :param split: train/val
         :param transform: transform to apply
         """
         super().__init__()
-        self._base_dir = base_dir
+        self._base_dir = base_dir + split
         self._image_dir = os.path.join(self._base_dir, 'JPEGImages')
         self._cat_dir = os.path.join(self._base_dir, 'SegmentationClass')
+        self.test = test
 
         if isinstance(split, str):
             self.split = [split]
@@ -36,7 +40,7 @@ class VOCSegmentation(Dataset):
 
         self.args = args
 
-        _splits_dir = os.path.join(self._base_dir, 'ImageSets', 'Segmentation')
+        _splits_dir = os.path.join(self._base_dir, 'ImageSets')
 
         self.im_ids = []
         self.images = []
@@ -45,7 +49,6 @@ class VOCSegmentation(Dataset):
         for splt in self.split:
             with open(os.path.join(os.path.join(_splits_dir, splt + '.txt')), "r") as f:
                 lines = f.read().splitlines()
-
             for ii, line in enumerate(lines):
                 _image = os.path.join(self._image_dir, line + ".jpg")
                 _cat = os.path.join(self._cat_dir, line + ".png")
@@ -71,9 +74,11 @@ class VOCSegmentation(Dataset):
         for split in self.split:
             if split == "train":
                 return self.transform_tr(sample)
-            elif split == 'val':
+            elif split == 'val' and not self.test:
                 return self.transform_val(sample)
-
+            elif split == 'test' and  self.test:  
+                return self.transform_test(sample, degree=1) ################# ellen change !!!!!!!!!!!
+                # degree = 0,1,2,3 -> [0,90,180,270]
 
     def _make_img_gt_point_pair(self, index):
         _img = Image.open(self.images[index]).convert('RGB')
@@ -99,6 +104,16 @@ class VOCSegmentation(Dataset):
             tr.ToTensor()])
 
         return composed_transforms(sample)
+
+    def transform_test(self, sample, degree):
+        composed_transforms = transforms.Compose([
+            # tr.Rotate(degree=degree),
+            torchvision.transforms.RandomRotation((90,180)),
+            tr.FixScaleCrop(crop_size=self.args.crop_size),
+            tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),tr.ToTensor()])
+
+        return composed_transforms(sample)
+
 
     def __str__(self):
         return 'VOC2012(split=' + str(self.split) + ')'

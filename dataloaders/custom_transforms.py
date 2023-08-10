@@ -73,6 +73,22 @@ class RandomRotate(object):
                 'label': mask}
 
 
+class Rotate(object): #ellen
+    def __init__(self, degree):
+        self.degree = degree
+        self.degree_set=[0,90,180,270]
+
+    def __call__(self, sample):
+        img = sample['image']
+        mask = sample['label']
+        rotate_degree = self.degree_set[self.degree]
+        img = img.rotate(rotate_degree, Image.BILINEAR)
+        mask = mask.rotate(rotate_degree, Image.NEAREST)
+
+        return {'image': img,
+                'label': mask}
+
+
 class RandomGaussianBlur(object):
     def __call__(self, sample):
         img = sample['image']
