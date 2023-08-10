@@ -1,3 +1,9 @@
+2022.fall semester   
+computer vision project
+team: Ellen oh, Walter park
+
+---
+original readme from : https://github.com/jfzhang95/pytorch-deeplab-xception
 # pytorch-deeplab-xception
 
 **Update on 2018/12/06. Provide model trained on VOC and SBD datasets.**  
